@@ -36,11 +36,16 @@
     const url = https(value);
     return url && Array.isArray(origins) && origins.includes(url.origin) ? url.href : null;
   }
-  function token(value) { return typeof value === 'string' && /^[A-Za-z0-9_-]{32,256}$/.test(value) ? value : null; }
+  function token(value) { return typeof value === 'string' && /^[A-Za-z0-9_-]{32,1536}$/.test(value) ? value : null; }
+  function pix(value) {
+    if (!value || typeof value.copyPaste !== 'string' || !/^000201[\x20-\x7e]{20,4090}$/.test(value.copyPaste) || !Number.isFinite(Date.parse(value.expiresAt || ''))) return null;
+    return { copyPaste:value.copyPaste, expiresAt:value.expiresAt,
+      qrCodeBase64:typeof value.qrCodeBase64 === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]{20,1000000}$/.test(value.qrCodeBase64) ? value.qrCodeBase64 : null };
+  }
   function order(value) {
     if (!value || !['pending','approved','rejected','cancelled','refunded'].includes(value.status)) throw Error('Resposta de pedido inválida.');
     if (!Object.hasOwn(catalog, value.pack) || !Number.isSafeInteger(value.amountCents) || value.amountCents < 0) throw Error('Resumo do pedido inválido.');
-    return { ...value, tutorialUrl: value.status === 'approved' && https(value.tutorialUrl) ? value.tutorialUrl : null,
+    return { ...value, pix:value.status === 'pending' ? pix(value.pix) : null, tutorialUrl: value.status === 'approved' && https(value.tutorialUrl) ? value.tutorialUrl : null,
       files: value.status === 'approved' && Array.isArray(value.files) ? value.files.slice(0, 30) : [],
       tutorial: value.status === 'approved' && Array.isArray(value.tutorial) ? value.tutorial.slice(0, 30) : [] };
   }
@@ -59,7 +64,7 @@
     if (/tutorial|passo|aplic|instal|revert|config/.test(text)) return responses.tutorial;
     return responses.support;
   }
-  const core = Object.freeze({ catalog, packId, money, quote, https, apiBase, checkoutUrl, token, order, reply });
+  const core = Object.freeze({ catalog, packId, money, quote, https, apiBase, checkoutUrl, token, pix, order, reply });
   if (typeof module !== 'undefined' && module.exports) module.exports = core;
   else window.OSUK_COMMERCE = core;
 })();

@@ -20,7 +20,7 @@
   async function request(route, { method = 'GET', body, accessToken, idempotencyKey } = {}) {
     if (!base) throw Error('Integração em configuração.');
     const controller = new AbortController(); controllers.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => controller.abort(), route === '/orders' ? 30000 : 12000);
     try {
       const headers = { Accept: 'application/json' };
       if (body) headers['Content-Type'] = 'application/json';
@@ -28,7 +28,10 @@
       if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
       const response = await fetch(base + route, { method, headers, body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal, credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' });
-      if (!response.ok) throw Error(response.status === 401 || response.status === 403 ? 'Seu acesso expirou. Entre no Discord para recuperar o pedido.' : 'Não foi possível consultar o pedido. Tente novamente em instantes.');
+      if (!response.ok) {
+        let detail; try { detail = await response.json(); } catch {}
+        throw Error(typeof detail?.error === 'string' ? detail.error.slice(0,300) : response.status === 401 || response.status === 403 ? 'Seu acesso expirou. Entre no Discord para recuperar o pedido.' : 'Não foi possível consultar o pedido. Tente novamente em instantes.');
+      }
       return await response.json();
     } catch (error) {
       if (error.name === 'AbortError') throw Error('A consulta demorou mais que o esperado. Tente novamente.');
@@ -62,6 +65,20 @@
     setHidden($('#checkout-unavailable'), !!base);
     const panel = $('#payment-order-state'), accessButton = $('#access-pack');
     let paymentChecking = false, paymentTimer = 0, paymentPollUntil = Date.now() + 600000, lastPaymentStatus = '';
+    function renderPix(value) {
+      const pix = core.pix(value), code = $('#pix-code'), image = $('#pix-qr');
+      setHidden($('#pix-checkout'), !pix);
+      if (code) code.value = pix?.copyPaste || '';
+      if (image) { setHidden(image, !pix?.qrCodeBase64); if (pix?.qrCodeBase64) image.src = pix.qrCodeBase64; else image.removeAttribute('src'); }
+      say($('#pix-instructions'), pix?.qrCodeBase64 ? 'Escaneie o QR Code ou copie o código no aplicativo do seu banco.' : 'Copie o código e escolha Pix copia e cola no aplicativo do seu banco.');
+      say($('#pix-copy-feedback'), '');
+      say($('#pix-expiry'), pix ? 'Código válido até ' + new Date(pix.expiresAt).toLocaleString('pt-BR', {timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'}) + ' (horário de Brasília).' : '');
+    }
+    $('#pix-copy')?.addEventListener('click', async () => {
+      const code = $('#pix-code'); if (!code?.value) return;
+      try { await navigator.clipboard.writeText(code.value); say($('#pix-copy-feedback'),'Código copiado. Abra o app do seu banco para pagar.'); }
+      catch { code.focus(); code.select(); say($('#pix-copy-feedback'),'Selecione o código acima e copie para o aplicativo do seu banco.'); }
+    });
     function showPaymentOrder(value, sample = false) {
       const order = core.order(value);
       // Um pedido anterior de outro pack não substitui a compra escolhida agora.
@@ -90,6 +107,9 @@
       }[order.status];
       say($('#payment-result-status'), sample ? 'PRÉVIA · PAGAMENTO APROVADO' : text[0]);
       say($('#payment-result-title'), text[1]); say($('#payment-result-description'), text[2]);
+      renderPix(order.pix);
+      if (order.pix) say($('#payment-result-description'), 'Pague pelo código abaixo. Esta página acompanha a confirmação e libera seu pack automaticamente.');
+      else if (order.lookupPending) say($('#payment-result-description'), 'Estamos recuperando sua cobrança. Aguarde e use “Atualizar pagamento”. Se o Pix não aparecer, fale no Discord antes de iniciar outro pedido.');
       setHidden(accessButton, !approved);
       accessButton.href = approved ? sample ? 'entrega.html?pack=' + id + '&preview=1' : 'entrega.html?pack=' + id + '#acesso=' + access : 'entrega.html';
       const checkout = order.status === 'pending' && core.checkoutUrl(order.checkoutUrl, allowedOrigins);
@@ -109,6 +129,7 @@
       catch (error) {
         setHidden(accessButton, true); accessButton.href = 'entrega.html';
         setHidden($('#resume-payment'), true);
+        renderPix(null);
         if (!panel.hidden) {
           panel.dataset.state = 'problem';
           say($('#payment-result-status'), 'ACESSO NÃO CONFIRMADO'); say($('#payment-result-title'), 'Vamos conferir seu pedido.');
@@ -121,7 +142,7 @@
     $('#payment-refresh')?.addEventListener('click', () => { paymentPollUntil = Date.now() + 600000; checkPayment(); });
     if (query.get('preview') === 'approved') showPaymentOrder({ pack:id, amountCents:core.quote(id,config.promotion).cents, status:'approved' }, true);
     else if (base && access) checkPayment();
-    let submitting = false, attemptKey = '', attemptFingerprint = '';
+    let submitting = false, attemptKey = '', attemptFingerprint = '', preparedAttempt = null;
     const mismatchMessage = 'Os e-mails precisam ser iguais. Confira e tente novamente.';
     const matching = () => {
       const mismatch = confirmation.value.trim() && confirmation.value.trim().toLowerCase() !== email.value.trim().toLowerCase();
@@ -144,18 +165,47 @@
       submitting = true; button.disabled = true; say(button, 'Preparando pagamento…');
       say($('#payment-feedback'), 'Preparando seu pagamento via Pix…');
       try {
-        const data = await request('/orders', { method: 'POST', body: { pack: id, email: email.value.trim(), paymentMethod: method }, idempotencyKey: attemptKey });
+        const purchase = { pack:id, email:email.value.trim(), paymentMethod:method };
+        let preparedToken, recoverOnly = false;
+        if (settings.prepareOrder === true) {
+          const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(fingerprint));
+          const digest = Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2,'0')).join('');
+          let previous = preparedAttempt;
+          if (!previous) { try { previous = JSON.parse(sessionStorage.getItem('osuk-pix-attempt-' + id)); } catch {} }
+          if (previous?.fingerprint === digest && core.token(previous.token) && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(previous.key || '')) preparedAttempt = previous;
+          else {
+            const prepared = await request('/orders/prepare', {method:'POST', body:purchase, idempotencyKey:attemptKey});
+            preparedAttempt = null;
+            if (!prepared.legacy) {
+              const savedToken = core.token(prepared.accessToken), draft = core.order(prepared.order);
+              if (!savedToken || draft.pack !== id || draft.status !== 'pending') throw Error('Não foi possível preparar o acesso ao pedido. Tente novamente.');
+              preparedAttempt = {fingerprint:digest, key:attemptKey, token:savedToken, submitted:false};
+            }
+          }
+          if (preparedAttempt) {
+            preparedToken = preparedAttempt.token; attemptKey = preparedAttempt.key; recoverOnly = preparedAttempt.submitted === true;
+            access = preparedToken; preparedAttempt.submitted = true;
+            // O acesso criptografado fica salvo antes da criação do Pix; não contém a chave da API.
+            try { sessionStorage.setItem('osuk-delivery-access',access); sessionStorage.setItem('osuk-pix-attempt-' + id,JSON.stringify(preparedAttempt)); } catch {}
+          }
+        }
+        const data = await request('/orders', { method:'POST', body:preparedToken ? {...purchase,recoverOnly} : purchase, accessToken:preparedToken, idempotencyKey:attemptKey });
         const url = core.checkoutUrl(data.checkoutUrl, allowedOrigins), newAccess = core.token(data.accessToken);
-        if (!url || !newAccess) throw Error('O checkout retornou um acesso inválido. Entre no Discord para conferir sua compra.');
+        const order = data.order ? core.order(data.order) : null;
+        if (!newAccess || (order ? order.pack !== id || (order.status === 'pending' && !order.pix) : !url)) throw Error('O pagamento retornou um acesso inválido. Entre no Discord para conferir sua compra.');
         // Apenas token opaco na sessão. E-mail, cartão e aprovação nunca são persistidos aqui.
         access = newAccess;
         try { sessionStorage.setItem('osuk-delivery-access', access); } catch {}
         const delivery = $('#delivery-preview');
         if (delivery) { delivery.href = 'pagamento.html?pack=' + id + '&retorno=1#acesso=' + access; delivery.textContent = 'Acompanhar pagamento'; }
-        say($('#payment-feedback'), 'Pedido criado. Abrindo o pagamento seguro…');
-        location.assign(url);
+        if (order) {
+          paymentPollUntil = Date.now() + 600000; showPaymentOrder(order); paymentSchedule();
+          say($('#payment-status-feedback'), 'Seu pedido foi criado. Aguardando o pagamento via Pix.');
+        } else {
+          say($('#payment-feedback'), 'Pedido criado. Abrindo o pagamento seguro…'); location.assign(url);
+        }
       } catch (error) { say($('#payment-feedback'), error.message || 'Não foi possível abrir o pagamento. Tente novamente.'); }
-      finally { submitting = false; button.disabled = false; say(button, 'Ir para pagamento'); }
+      finally { submitting = false; button.disabled = false; say(button, 'Gerar QR Code Pix'); }
     });
     // Recalcula oferta real ao retornar do checkout; o servidor decide o preço final do pedido.
     window.addEventListener('pageshow', event => { quote(); if (event.persisted) { paymentPollUntil = Date.now() + 600000; checkPayment(); } });

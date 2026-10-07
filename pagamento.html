@@ -4,8 +4,8 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#000000">
 <title>Pagamento | OSUK OPTIMIZERS</title>
 <link rel="icon" href="assets/favicon-osuk.ico?v=1" sizes="any"><link rel="icon" href="assets/favicon-osuk-16.png?v=1" type="image/png" sizes="16x16"><link rel="icon" href="assets/favicon-osuk-32.png?v=1" type="image/png" sizes="32x32"><link rel="icon" href="assets/favicon-osuk-96.png?v=1" type="image/png" sizes="96x96"><link rel="apple-touch-icon" href="assets/apple-touch-icon.png?v=1" sizes="180x180">
-<link rel="stylesheet" href="styles.css?v=17"><link rel="stylesheet" href="refinements.css?v=3"><link rel="stylesheet" href="commerce.css?v=4">
-<script src="config.js?v=15" defer></script><script src="app.js?v=20" defer></script><script src="commerce-core.js?v=2" defer></script><script src="approval-rocket.js?v=1" defer></script><script src="commerce.js?v=5" defer></script>
+<link rel="stylesheet" href="styles.css?v=17"><link rel="stylesheet" href="refinements.css?v=3"><link rel="stylesheet" href="commerce.css?v=5">
+<script src="config.js?v=16" defer></script><script src="app.js?v=20" defer></script><script src="commerce-core.js?v=4" defer></script><script src="approval-rocket.js?v=1" defer></script><script src="commerce.js?v=7" defer></script>
 <!-- Google Analytics e TikTok Pixel: placeholders em config.js, somente com consentimento. -->
 </head>
 <body class="commerce-page payment-page" data-commerce-page="payment">
@@ -79,13 +79,20 @@
 <p class="eyebrow" id="payment-result-status" role="status">AGUARDANDO CONFIRMAÇÃO</p>
 <h2 id="payment-result-title">Estamos conferindo seu pedido.</h2>
 <p id="payment-result-description">Assim que o pagamento for confirmado, você poderá acessar seu pack.</p>
+<div class="pix-checkout" id="pix-checkout" hidden>
+<h3>Pague via Pix</h3><p id="pix-instructions">Escaneie o QR Code ou copie o código no aplicativo do seu banco.</p>
+<img id="pix-qr" width="216" height="216" alt="QR Code para pagar este pedido via Pix" hidden>
+<div class="commerce-field"><label for="pix-code">Pix copia e cola</label><input id="pix-code" type="text" readonly autocomplete="off" spellcheck="false"></div>
+<button class="button secondary" type="button" id="pix-copy">Copiar código Pix</button>
+<p id="pix-expiry" class="pix-expiry"></p><p id="pix-copy-feedback" class="commerce-feedback" role="status" aria-live="polite"></p>
+</div>
 <a class="button" id="access-pack" href="entrega.html" hidden>Acessar pack <svg class="icon" aria-hidden="true" focusable="false"><use href="#arrow-right"></use></svg></a>
 <a class="button secondary" id="resume-payment" href="pagamento.html" hidden>Concluir pagamento</a>
 <button type="button" class="text-link" id="payment-refresh">Atualizar pagamento</button>
 <p id="payment-status-feedback" class="commerce-feedback" role="status" aria-live="polite"></p>
 </section>
 <section class="commerce-panel payment-form-panel" aria-labelledby="payment-form-title">
-<div class="commerce-panel-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#mail"></use></svg><div><h2 id="payment-form-title">Primeiro, seu e-mail.</h2><p>Vamos usá-lo para o acesso e os avisos do seu pedido.</p></div></div>
+<div class="commerce-panel-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#mail"></use></svg><div><h2 id="payment-form-title">Primeiro, seu e-mail.</h2><p>Ele identifica sua compra e ajuda a recuperar seu pedido.</p></div></div>
 <form id="payment-form" action="pagamento.html" method="post">
 <div class="commerce-field"><label for="buyer-email">E-mail</label><input id="buyer-email" name="email" type="email" placeholder="voce@exemplo.com" required maxlength="254" autocomplete="email" aria-describedby="email-help" inputmode="email" spellcheck="false" autocapitalize="none"></div>
 <div class="commerce-field"><label for="buyer-email-confirm">Confirme seu e-mail</label><input id="buyer-email-confirm" name="email-confirm" type="email" placeholder="Repita seu e-mail" required maxlength="254" autocomplete="email" aria-describedby="email-help" inputmode="email" spellcheck="false" autocapitalize="none"></div>
@@ -93,7 +100,7 @@
 <fieldset class="payment-methods"><legend>Como prefere pagar?</legend>
 <div class="payment-method-grid"><label class="payment-method"><input type="radio" name="payment-method" value="pix" checked><svg class="icon" aria-hidden="true" focusable="false"><use href="#bolt"></use></svg><span><strong>Via Pix</strong></span></label><label class="payment-method is-unavailable"><input type="radio" name="payment-method" value="card" disabled><svg class="icon" aria-hidden="true" focusable="false"><use href="#credit-card"></use></svg><span><strong>Cartão</strong><small>Em breve</small></span></label><label class="payment-method is-unavailable"><input type="radio" name="payment-method" value="boleto" disabled><svg class="icon" aria-hidden="true" focusable="false"><use href="#barcode"></use></svg><span><strong>Boleto</strong><small>Em breve</small></span></label></div>
 <p class="commerce-field-help">Via Pix. Outros meios poderão ser habilitados depois.</p></fieldset>
-<div class="payment-submit-area"><button class="button" id="pay-button" type="submit" disabled>Ir para pagamento <svg class="icon" aria-hidden="true" focusable="false"><use href="#arrow-up-right"></use></svg></button><p class="payment-provider-note"><svg class="icon" aria-hidden="true" focusable="false"><use href="#lock"></use></svg> A confirmação do pagamento é feita pelo provedor.</p><p id="payment-feedback" class="commerce-feedback" role="status" aria-live="polite"></p></div>
+<div class="payment-submit-area"><button class="button" id="pay-button" type="submit" disabled>Gerar QR Code Pix <svg class="icon" aria-hidden="true" focusable="false"><use href="#arrow-up-right"></use></svg></button><p class="payment-provider-note"><svg class="icon" aria-hidden="true" focusable="false"><use href="#lock"></use></svg> A confirmação do pagamento é feita pelo provedor.</p><p id="payment-feedback" class="commerce-feedback" role="status" aria-live="polite"></p></div>
 </form>
 <p class="commerce-notice" id="checkout-unavailable">Pagamento em configuração. Em breve você poderá finalizar por aqui.</p>
 <noscript><p class="commerce-notice">Ative o JavaScript para conferir seu pedido antes de pagar. Se precisar, fale com a OSUK no Discord.</p></noscript>

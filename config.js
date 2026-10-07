@@ -1,11 +1,12 @@
 window.OSUK_CONFIG = {
   discord: 'https://discord.gg/X6Vna8y2W2', // Convite da comunidade e suporte.
   contactEmail: '',
-  siteUrl: '',
+  siteUrl: 'https://osukotimizers.vercel.app',
   checkout: { ultra: '', valorant: '', completo: '' }, // URLs HTTPS de checkouts hospedados
   commerce: {
     provider: 'GoatPay',
-    apiBase: '', // Backend OSUK, ex. /api. Vazio mantém a compra indisponível.
+    apiBase: '/api', // Backend OSUK, ex. /api. Vazio mantém a compra indisponível.
+    prepareOrder: true, // Salva o acesso antes de solicitar a cobrança Pix.
     methods: ['pix'], // Outros meios só após confirmação de disponibilidade no provedor.
     checkoutOrigins: ['https://pay.goatpay.com.br'] // Confirmar o domínio do checkout da sua conta.
   }, // Credenciais, pedidos, arquivos privados e webhooks pertencem ao servidor.
