@@ -1,0 +1,2 @@
+const {reply,wrap}=require('../osuk-server/http.cjs');
+module.exports=wrap('GET',async(req,res)=>{const names=['APP_URL','DATABASE_URL','GOATPAY_API_KEY','GOATPAY_WEBHOOK_SECRET','ORDER_TOKEN_SECRET'];const missing=names.filter(name=>!process.env[name]||(name==='ORDER_TOKEN_SECRET'&&process.env[name].length<32));reply(res,missing.length?503:200,{status:missing.length?'configuration_required':'configuration_present',missing,paymentVerified:false});});
